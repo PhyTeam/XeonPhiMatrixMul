@@ -23,7 +23,7 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
   }
   int p = 0;
   #pragma omp parallel for default(none) private(i, j, k) \
-  firstprivate(Mat_A, Mat_B, Mat_C) shared(p, Mat_size) num_threads(1)
+  firstprivate(Mat_A, Mat_B, Mat_C) shared(p, Mat_size) num_threads(num_threads)
   for (i = 0; i < Mat_size; i++) {
     for (j = 0; j < Mat_size; j++) {
 
@@ -58,15 +58,15 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 #pragma offload target(mic:MIC_DEV) \
   in(size) \
   in(Mat_A:length(size*size)) \
-  in(Mat_A:length(size*size)) \
+  in(Mat_B:length(size*size)) \
   out(Mat_C:length(size*size))
   {
-    #pragma omp parallel for default(none) shared(Mat_C,size)
+    #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
     for(i = 0; i < size * size; ++i)
       Mat_C[i] = 0.0f;
 
-    #pragma omp parallel for default(none) \
-    shared(Mat_A,Mat_B,Mat_C,size, p) num_threads(nthread)
+    #pragma omp parallel for default(none) private(i,j,k)\
+    shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p) num_threads(nthread)
     for (i = 0; i < size; i++) {
       for (j = 0; j < size; j++) {
         for (k = 0; k < size; k++) {
@@ -79,7 +79,7 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
     #pragma omp critical
     {
         if (p % (100) == 0){
-          printf("Percent: %f, %d\n", (float)p / (Mat_size * Mat_size), Mat_size);
+          printf("Percent: %f, %d\n", (float)p / (size *size), size);
         }
       }
     }
