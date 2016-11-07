@@ -58,7 +58,7 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 #pragma offload target(mic:MIC_DEV) \
   in(size) \
   in(Mat_A:length(size*size)) \
-  in(Mat_A:length(size*size)) \
+  in(Mat_B:length(size*size)) \
   out(Mat_C:length(size*size))
   {
     #pragma omp parallel for default(none) shared(Mat_C,size)
