@@ -56,7 +56,7 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 // Offload part
 #ifdef __INTEL_OFFLOAD
 #pragma offload target(mic:MIC_DEV) \
-  int(size) \
+  in(size) \
   in(Mat_A:length(size*size)) \
   in(Mat_A:length(size*size)) \
   out(Mat_C:length(size*size))
