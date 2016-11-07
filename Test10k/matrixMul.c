@@ -5,6 +5,7 @@
 int Mat_size;
 #define _Pos(i,j) (i * Mat_size + j)
 #define REAL float
+#define MIC_DEV 0
 /***
 * Global variable
 ***/
@@ -47,15 +48,16 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 /***
 * Simple matrix multiplication using offload OpenMP on MIC arch
 ***/
-void doMult_offload(REAL* Mat_A, REAL* Mat_C, REAL* Mat_C){
+void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
   int size = Mat_size;
   int nthread = 10; // EDIT
+  int i,j ,k;
 // Offload part
 #ifdef __INTEL_OFFLOAD
 #pragma offload target(mic:MIC_DEV) \
-  in(Matrix_A:length(size*size)) \
-  in(Matrix_A:length(size*size)) \
-  out(Matrix_C:length(size*size)) \
+  in(Mat_A:length(size*size)) \
+  in(Mat_A:length(size*size)) \
+  out(Mat_C:length(size*size)) \
   {
     #pragma omp parallel for default(none) shared(Mat_C,size)
     for(int i = 0; i < size * size; ++i)
