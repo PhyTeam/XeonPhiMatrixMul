@@ -52,19 +52,21 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
   int size = Mat_size;
   int nthread = 10; // EDIT
   int i,j ,k;
+  int p = 0;
 // Offload part
 #ifdef __INTEL_OFFLOAD
 #pragma offload target(mic:MIC_DEV) \
+  int(size) \
   in(Mat_A:length(size*size)) \
   in(Mat_A:length(size*size)) \
   out(Mat_C:length(size*size))
   {
     #pragma omp parallel for default(none) shared(Mat_C,size)
-    for(int i = 0; i < size * size; ++i)
+    for(i = 0; i < size * size; ++i)
       Mat_C[i] = 0.0f;
 
     #pragma omp parallel for default(none) \
-    shared(Mat_A,Mat_B,Mat_C,size) num_threads(nthread)
+    shared(Mat_A,Mat_B,Mat_C,size, p) num_threads(nthread)
     for (i = 0; i < size; i++) {
       for (j = 0; j < size; j++) {
         for (k = 0; k < size; k++) {
