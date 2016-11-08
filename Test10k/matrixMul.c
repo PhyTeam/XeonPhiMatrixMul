@@ -61,10 +61,11 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
   in(Mat_B:length(size*size)) \
   out(Mat_C:length(size*size))
   {
+/*
     #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
     for(i = 0; i < size * size; ++i)
       Mat_C[i] = 0.0f;
-
+*/
     #pragma omp parallel for default(none) private(i,j,k)\
     shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p) num_threads(nthread)
     for (i = 0; i < size; i++) {
