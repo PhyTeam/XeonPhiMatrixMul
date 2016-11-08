@@ -9,12 +9,12 @@ int Mat_size;
 /***
 * Global variable
 ***/
-REAL *Mat_A, *Mat_B, *Mat_C;
+REAL *  Mat_A,* Mat_B, *Mat_C;
 int num_threads;
 /***
 * Simple matrix multiplication using OpenMP on host system
 ***/
-void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
+void doMult(REAL*  Mat_A, REAL * Mat_B, REAL* Mat_C){
   int i,j ,k;
   // Initialize matrix C
   #pragma omp parallel for private(i) shared(Mat_C)
@@ -28,7 +28,7 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
     for (j = 0; j < Mat_size; j++) {
 
       for (k = 0; k < Mat_size; k++) {
-        Mat_C[_Pos(i,j)] += Mat_A[_Pos(i, k)] * Mat_B[_Pos(k, j)];
+        Mat_C[Mat_size * i + j] += Mat_A[Mat_size *i + k] * Mat_B[Mat_size * k + j];
       }
 
       #pragma omp atomic
@@ -48,11 +48,12 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 /***
 * Simple matrix multiplication using offload OpenMP on MIC arch
 ***/
-void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
+void doMult_offload(REAL *Mat_A, REAL *Mat_B, REAL *Mat_C){
   int size = Mat_size;
   int nthread = 10; // EDIT
   int i,j ,k;
   int p = 0;
+  int _s = 0;
 // Offload part
 #ifdef __INTEL_OFFLOAD
 #pragma offload target(mic:MIC_DEV) \
@@ -65,30 +66,30 @@ void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
     for(i = 0; i < size * size; ++i)
       Mat_C[i] = 0.0f;
 
-    #pragma omp parallel for default(none) private(i,j,k)\
-    shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p) num_threads(nthread)
+    #pragma omp parallel for default(none) private(i,j,k, _s)\
+    shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p)
     for (i = 0; i < size; i++) {
       for (j = 0; j < size; j++) {
         for (k = 0; k < size; k++) {
-          Mat_C[_Pos(i,j)] += Mat_A[_Pos(i, k)] * Mat_B[_Pos(k, j)];
+          Mat_C[i * size + j ] += Mat_A[i * size +  k] * Mat_B[k * size + j];
         }
-        #pragma omp atomic
-              p += 1;
+//        #pragma omp atomic
+//              p += 1;
       }
       // Print percent
-    #pragma omp critical
-    {
-        if (p % (100) == 0){
-          printf("Percent: %f, %d\n", (float)p / (size *size), size);
-        }
-      }
+//    #pragma omp critical
+//    {
+//        if (p % (100) == 0){
+//          printf("Percent: %f, %d\n", (float)p / (size *size), size);
+//        }
+//      }
     }
   }
 #else
 printf("May deo co Xeon Phi ma doi offload\n");
 #endif
 }
-
+//#define PRINT_MATRIX
 /***
 * Print matrix for testing
 ***/
@@ -122,6 +123,9 @@ int main(int argc, char *argv[]){
   #ifdef __INTEL_OFFLOAD
      num_devices = _Offload_number_of_devices();
   #endif
+  
+  kmp_set_defaults("KMP_AFFINIT=compact");
+
    printf("Number of Target devices installed: %d\n\n",num_devices);
   Mat_size = mat_len;
   Mat_A = (REAL*)malloc(sizeof(REAL) * Mat_size * Mat_size);
@@ -150,12 +154,13 @@ int main(int argc, char *argv[]){
   // Calculate time
   double stime = omp_get_wtime();
   // Call parallel matrix multiplication
-  doMult(Mat_A, Mat_B, Mat_C);
+  doMult_offload(Mat_A, Mat_B, Mat_C);
   double etime = omp_get_wtime();
   printf("Escaped time : %lf\n", etime - stime);
 #ifdef PRINT_MATRIX
   printf("Matrix C: \n");
   print_matrix(Mat_C);
 #endif
+  free(Mat_A); free(Mat_B); free(Mat_C);
   return 0;
 }

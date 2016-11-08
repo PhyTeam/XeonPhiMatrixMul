@@ -23,17 +23,18 @@
 ##      Build for Sample intro_sampleC
 ##******************************************************************************
 
-NAME		=	intro_sampleC
+NAME		=	intro_sampleC2
 CC		=	icc
 CXX		=	icpc
 LD		=	icc
 DEBUG		+=
-CFLAGS		+=	-qopenmp $(DEBUG)
+CFLAGS		+=	-qopenmp -std=c99 $(DEBUG)
 CXXFLAGS	+=	$(CFLAGS)
 LDFLAGS		+=	
 
 EXE		=	$(NAME).out
-CFILES		=	$(wildcard *.c)
+CFILES		+=	$(wildcard *.c)
+##CFILES		-=	$(wildcard openmp*.c)
 CXXFILES	=	$(wildcard *.cpp)
 OBJECTS		=	$(CFILES:.c=.o) $(CXXFILES:.cpp=.o)
 all: $(EXE)
