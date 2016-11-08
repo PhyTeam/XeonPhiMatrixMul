@@ -9,12 +9,11 @@ int Mat_size;
 /***
 * Global variable
 ***/
-REAL *Mat_A, *Mat_B, *Mat_C;
 int num_threads;
 /***
 * Simple matrix multiplication using OpenMP on host system
 ***/
-void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
+void doMult(REAL*  Mat_A, REAL * Mat_B, REAL* Mat_C){
   int i,j ,k;
   // Initialize matrix C
   #pragma omp parallel for private(i) shared(Mat_C)
@@ -28,7 +27,7 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
     for (j = 0; j < Mat_size; j++) {
 
       for (k = 0; k < Mat_size; k++) {
-        Mat_C[_Pos(i,j)] += Mat_A[_Pos(i, k)] * Mat_B[_Pos(k, j)];
+        Mat_C[Mat_size * i + j] += Mat_A[Mat_size *i + k] * Mat_B[Mat_size * k + j];
       }
 
       #pragma omp atomic
@@ -48,46 +47,93 @@ void doMult(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
 /***
 * Simple matrix multiplication using offload OpenMP on MIC arch
 ***/
-void doMult_offload(REAL* Mat_A, REAL* Mat_B, REAL* Mat_C){
+void doMult_offload(REAL *Mat_A, REAL *Mat_B, REAL *Mat_C){
   int size = Mat_size;
   int nthread = 10; // EDIT
   int i,j ,k;
   int p = 0;
-// Offload part
-#ifdef __INTEL_OFFLOAD
-#pragma offload target(mic:MIC_DEV) \
-  in(size) \
-  in(Mat_A:length(size*size)) \
-  in(Mat_B:length(size*size)) \
-  out(Mat_C:length(size*size))
-  {
-/*
-    #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
-    for(i = 0; i < size * size; ++i)
-      Mat_C[i] = 0.0f;
-*/
-    #pragma omp parallel for default(none) private(i,j,k)\
-    shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p) num_threads(nthread)
-    for (i = 0; i < size; i++) {
-      for (j = 0; j < size; j++) {
-        for (k = 0; k < size; k++) {
-          Mat_C[_Pos(i,j)] += Mat_A[_Pos(i, k)] * Mat_B[_Pos(k, j)];
-        }
-        #pragma omp atomic
-              p += 1;
-      }
-      // Print percent
-    #pragma omp critical
+  int _s = 0;
+  // Offload part
+  #ifdef __INTEL_OFFLOAD
+  #pragma offload target(mic:MIC_DEV) \
+    in(size) \
+    in(Mat_A:length(size*size)) \
+    in(Mat_B:length(size*size)) \
+    out(Mat_C:length(size*size))
     {
-        if (p % (100) == 0){
-          printf("Percent: %f, %d\n", (float)p / (size *size), size);
+      #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
+      for(i = 0; i < size * size; ++i)
+        Mat_C[i] = 0.0f;
+      #pragma omp parallel for default(none) private(i,j,k, _s)\
+      shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p)
+      for (i = 0; i < size; i++) {
+        for (j = 0; j < size; j++) {
+          for (k = 0; k < size; k++) {
+            Mat_C[i * size + j ] += Mat_A[i * size +  k] * Mat_B[k * size + j];
+          }
+  //        #pragma omp atomic
+  //              p += 1;
         }
+        // Print percent
+  //    #pragma omp critical
+  //    {
+  //        if (p % (100) == 0){
+  //          printf("Percent: %f, %d\n", (float)p / (size *size), size);
+  //        }
+  //      }
       }
     }
-  }
-#else
-printf("May deo co Xeon Phi ma doi offload\n");
-#endif
+  #else
+  printf("May deo co Xeon Phi ma doi offload\n");
+  #endif
+}
+
+/***
+* Matrix multiplication using offload OpenMP and using C99
+***/
+void doMult_offload_v2(int size,
+  float (* restrict Mat_A)[size],
+  float (* restrict Mat_B)[size],
+  float (* restrict Mat_C)[size]) {
+
+  int nthread = 10; // EDIT
+  int i,j ,k;
+  int p = 0;
+  int _s = 0;
+  // Offload part
+  #ifdef __INTEL_OFFLOAD
+  #pragma offload target(mic:MIC_DEV) \
+    in(size) \
+    in(Mat_A:length(size*size)) \
+    in(Mat_B:length(size*size)) \
+    out(Mat_C:length(size*size))
+    {
+      #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
+      for(i = 0; i < size; ++i)
+        for(j = 0; j < size; ++j)
+          Mat_C[i][j] = 0.0f;
+      #pragma omp parallel for default(none) private(i,j,k, _s)\
+      shared(Mat_A,Mat_B,Mat_C, Mat_size,size, p)
+      for (i = 0; i < size; i++) {
+        for (j = 0; j < size; j++) {
+          for (k = 0; k < size; k++) {
+            Mat_C[i][j] += Mat_A[i][k] * Mat_B[k][j];
+          }
+  //        #pragma omp atomic
+  //              p += 1;
+        }
+        // Print percent
+  //    #pragma omp critical
+  //    {
+  //        if (p % (100) == 0){
+  //          printf("Percent: %f, %d\n", (float)p / (size *size), size);
+  //        }
+  //      }
+      }
+    }
+  #else
+  printf("May deo co Xeon Phi ma doi offload\n");
+  #endif
 }
 
 /***
@@ -123,15 +169,41 @@ int main(int argc, char *argv[]){
   #ifdef __INTEL_OFFLOAD
      num_devices = _Offload_number_of_devices();
   #endif
-   printf("Number of Target devices installed: %d\n\n",num_devices);
+
+  kmp_set_defaults("KMP_AFFINIT=compact");
+
+  printf("Number of Target devices installed: %d\n\n",num_devices);
+
   Mat_size = mat_len;
-  Mat_A = (REAL*)malloc(sizeof(REAL) * Mat_size * Mat_size);
-  Mat_B = (REAL*)malloc(sizeof(REAL) * Mat_size * Mat_size);
-  Mat_C = (REAL*)calloc(sizeof(REAL), Mat_size * Mat_size);
+// Check C99 is supported
+#if __STDC_VERSION__ >= 199901L
+/// Check this is intel compiler
+  #ifdef __INTEL_COMPILER
+    int size = mat_len;
+    float (* restrict Mat_A)[size] = __mm_malloc(size * size *sizeof(float), 64);
+    float (* restrict Mat_B)[size] = __mm_malloc(size * size *sizeof(float), 64);
+    float (* restrict Mat_C)[size] = __mm_malloc(size * size *sizeof(float), 64);
+    if (Mat_A == NULL || Mat_B == NULL || Mat_C == NULL) {
+      printf("Can not allocation matrix in memory. Please check memory size.\n");
+      exit(-1);
+    }
+  #else
+    printf("Please use icc compiler!\n");
+    exit(-1);
+  #endif
+#else
+  float *Mat_A = (REAL*)malloc(sizeof(REAL) * Mat_size * Mat_size);
+  float *Mat_B = (REAL*)malloc(sizeof(REAL) * Mat_size * Mat_size);
+  float *Mat_C = (REAL*)calloc(sizeof(REAL), Mat_size * Mat_size);
+  printf("Warnning please using std=c99\n", );
   if (Mat_A == NULL || Mat_B == NULL || Mat_C == NULL){
     printf("Error: Can not allocation memory.\n");
     return -1;
   }
+#endif
+
+
+
   // Initialize data
   int i, j, k;
   for (i = 0; i < Mat_size; i++) {
@@ -140,23 +212,17 @@ int main(int argc, char *argv[]){
         Mat_B[_Pos(i,j)] = i + j;
       }
   }
-  // Load data from file
-  // Print matrix
-#ifdef PRINT_MATRIX
-  printf("Matrix A: \n");
-  print_matrix(Mat_A);
-  printf("Matrix B: \n");
-  print_matrix(Mat_B);
-#endif
   // Calculate time
   double stime = omp_get_wtime();
   // Call parallel matrix multiplication
-  doMult(Mat_A, Mat_B, Mat_C);
+  doMult_offload_v2(Mat_A, Mat_B, Mat_C);
   double etime = omp_get_wtime();
   printf("Escaped time : %lf\n", etime - stime);
-#ifdef PRINT_MATRIX
-  printf("Matrix C: \n");
-  print_matrix(Mat_C);
+
+#ifdef __INTEL_COMPILER
+  __mm_free(Mat_A); __mm_free(Mat_B); __mm_free(Mat_C);
+#else
+  free(Mat_A); free(Mat_B); free(Mat_C);
 #endif
   return 0;
 }
