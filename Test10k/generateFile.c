@@ -8,9 +8,12 @@ int main(int argc, char *argv[]){
 	int i;
 	FILE* file = fopen("myMatrixA","wb");
 	FILE* file2 = fopen("myMatrixB","wb");
+
+
 	for ( i = 0 ; i < len; i++ ){
 		float *buff = (float*)malloc(len);
 		float *buff2 = (float*)malloc(len);
+		int j;
 		for(j = 0; j < len; ++j){
 			buff[j] = i + j;
 			buff2[j] = j * i;
