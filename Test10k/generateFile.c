@@ -7,11 +7,11 @@ int main(int argc, char *argv[]){
 	len = atoi(argv[1]);
 
 	int i;
-	FILE* file = fopen("myMatrixA","wb");
-	FILE* file2 = fopen("myMatrixB","wb");
+	FILE* file = fopen("A","wb");
+	FILE* file2 = fopen("B","wb");
 
 
-	for ( i = 0 ; i < len; i++ ){
+	for ( i = 0 ; i < len; ++i ){
 		float *buff = (float*)malloc(len);
 		float *buff2 = (float*)malloc(len);
 		int j;
@@ -19,11 +19,11 @@ int main(int argc, char *argv[]){
 			buff[j] = i + j;
 			buff2[j] = j * i;
 			fwrite(buff, sizeof(float), len, file);
-			fwrite(buff, sizeof(float), len, file2);
+			fwrite(buff2, sizeof(float), len, file2);
 		}
 		free(buff); free(buff2);
 	}
-	fclose("myMatrixA");
-	fclose("myMatrixB");
-
+	fclose(file);
+	fclose(file2);
+	return 0;
 }
