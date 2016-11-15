@@ -28,7 +28,7 @@ CC		=	icc
 CXX		=	icpc
 LD		=	icc
 DEBUG		+=
-CFLAGS		+=	-qopenmp -std=c99 $(DEBUG)
+CFLAGS		+=	-O3 -qopenmp -mkl -std=c99 $(DEBUG)
 CXXFLAGS	+=	$(CFLAGS)
 LDFLAGS		+=	
 

@@ -1,0 +1,2 @@
+./run nThrds 1 matrix 10000 maxRT 8.81184 minRT 8.81184 aveRT 8.81184       ave_GFlop/s 226.967
+ 

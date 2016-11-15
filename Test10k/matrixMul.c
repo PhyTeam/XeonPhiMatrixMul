@@ -13,6 +13,7 @@ int num_threads;
 /***
 * Simple matrix multiplication using OpenMP on host system
 ***/
+#ifdef NO_C99
 void doMult(REAL*  Mat_A, REAL * Mat_B, REAL* Mat_C){
   int i,j ,k;
   // Initialize matrix C
@@ -43,6 +44,7 @@ void doMult(REAL*  Mat_A, REAL * Mat_B, REAL* Mat_C){
   }
 
 }
+#endif
 
 /***
 * Simple matrix multiplication using offload OpenMP on MIC arch
@@ -108,7 +110,7 @@ void doMult_offload_v2(int size,
     in(Mat_B:length(size*size)) \
     out(Mat_C:length(size*size))
     {
-      #pragma omp parallel for default(none) private(i) shared(Mat_C,size)
+      #pragma omp parallel for default(none) private(i, j) shared(Mat_C,size)
       for(i = 0; i < size; ++i)
         for(j = 0; j < size; ++j)
           Mat_C[i][j] = 0.0f;
@@ -171,7 +173,7 @@ int main(int argc, char *argv[]){
   #endif
 
   kmp_set_defaults("KMP_AFFINIT=compact");
-
+  omp_set_num_threads(num_threads);
   printf("Number of Target devices installed: %d\n\n",num_devices);
 
   Mat_size = mat_len;
@@ -180,9 +182,9 @@ int main(int argc, char *argv[]){
 /// Check this is intel compiler
   #ifdef __INTEL_COMPILER
     int size = mat_len;
-    float (* restrict Mat_A)[size] = __mm_malloc(size * size *sizeof(float), 64);
-    float (* restrict Mat_B)[size] = __mm_malloc(size * size *sizeof(float), 64);
-    float (* restrict Mat_C)[size] = __mm_malloc(size * size *sizeof(float), 64);
+    float (* restrict Mat_A)[size] = malloc(size * size *sizeof(float));
+    float (* restrict Mat_B)[size] = malloc(size * size *sizeof(float));
+    float (* restrict Mat_C)[size] = malloc(size * size *sizeof(float));
     if (Mat_A == NULL || Mat_B == NULL || Mat_C == NULL) {
       printf("Can not allocation matrix in memory. Please check memory size.\n");
       exit(-1);
@@ -208,19 +210,19 @@ int main(int argc, char *argv[]){
   int i, j, k;
   for (i = 0; i < Mat_size; i++) {
       for (j = 0; j < Mat_size; j++) {
-        Mat_A[_Pos(i,j)] = i * j;
-        Mat_B[_Pos(i,j)] = i + j;
+        Mat_A[i][j] = i * j;
+        Mat_B[i][j] = i + j;
       }
   }
   // Calculate time
   double stime = omp_get_wtime();
   // Call parallel matrix multiplication
-  doMult_offload_v2(Mat_A, Mat_B, Mat_C);
+  doMult_offload_v2(size, Mat_A, Mat_B, Mat_C);
   double etime = omp_get_wtime();
   printf("Escaped time : %lf\n", etime - stime);
 
 #ifdef __INTEL_COMPILER
-  __mm_free(Mat_A); __mm_free(Mat_B); __mm_free(Mat_C);
+  free(Mat_A); free(Mat_B); free(Mat_C);
 #else
   free(Mat_A); free(Mat_B); free(Mat_C);
 #endif
