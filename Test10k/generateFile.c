@@ -12,8 +12,8 @@ int main(int argc, char *argv[]){
 	printf("Len %d\n", len);
 
 	for ( i = 0 ; i < len; ++i ){
-		float *buff = (float*)malloc(len);
-		float *buff2 = (float*)malloc(len);
+		float *buff = malloc(len*sizeof(float));
+		float *buff2 = malloc(len*sizeof(float));
 		int j;
 		for(j = 0; j < len; ++j){
 			buff[j] = i + j;
