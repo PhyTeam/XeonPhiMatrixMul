@@ -18,14 +18,18 @@ uint64_t mortonEncode_for(unsigned int x, unsigned int y);
 #define ALLOC_MATRIX(size, type) _mm_malloc(sizeof(type)*size*size,32)
 #define DEALLOC_MATRIX(ptr) _mm_free(ptr)
 typedef float * __attribute__((align_value(32))) REAL_PTR;
+//typedef float* REAL_PTR;
 // Declare mic method
 __declspec(target(mic)) float* strassen_matrix_multiply_recursive(REAL_PTR A, REAL_PTR B, REAL_PTR out, int size);
+__declspec(target(mic)) void _add(REAL_PTR, REAL_PTR, REAL_PTR, int);
+__declspec(target(mic)) void _sub(REAL_PTR, REAL_PTR, REAL_PTR, int);
 #else
 typedef float* REAL_PTR;
 #define DEALLOC_MATRIX(ptr) free(ptr)
 #define ALLOC_MATRIX(size, type) malloc(sizeof(type) * size * size)
 /// Declare local function
 float* strassen_matrix_multiply_recursive(REAL_PTR A, REAL_PTR B, REAL_PTR out, int size);
+void _add(READ_PTR, READ_PTR, REAL_PTR, int);
 #endif
 #define REAL float
 
@@ -49,7 +53,7 @@ void serial_matrix_mul(REAL_PTR matrix_A,
     }
 }
 
-
+__declspec(target(mic))
 void simple_matrix_mul(REAL_PTR matrix_A,
                        REAL_PTR matrix_B,
                        REAL_PTR matrix_C, int size)
@@ -197,30 +201,45 @@ inline void add(float* ptr_A, float *ptr_B, int size){
 
 void _add(REAL_PTR ptr_A, REAL_PTR ptr_B, REAL_PTR ptr_out, int size){
     int i = 0;
-
-    while (i < size * size){
-        *(ptr_out + i) = (*(ptr_A + i)) + *(ptr_B + i);
-        ++i;
+#pragma omp parallel for simd
+    for(i = 0; i < size * size; ++i){
+    //while (i < size * size){
+        //*(ptr_out + i) = (*(ptr_A + i)) + *(ptr_B + i);
+        ptr_out[i] = ptr_A[i] + ptr_B[i];
+        //++i;
     }
+    
 }
 
 void _sub(REAL_PTR ptr_A, REAL_PTR ptr_B, REAL_PTR ptr_out, int size){
     int i = 0;
-
-    while (i < size * size){
-        *(ptr_out + i) = (*(ptr_A + i)) - *(ptr_B + i);
-        ++i;
+#pragma omp parallel for simd
+    for(i = 0; i < size * size; ++i){
+    // while (i < size * size){
+        //*(ptr_out + i) = (*(ptr_A + i)) - *(ptr_B + i);
+        ptr_out[i] = ptr_A[i] - ptr_B[i];
+        //++i;
     }
 }
-
-#define MIN_SQUARE_MATRIX 32
+__declspec(target(mic))
+int MIN_SQUARE_MATRIX=32;
 #define USING_ZMORTON
 int type = 0;
+
+__declspec(target(mic)) 
+void report_num_threads(int size)
+{
+#pragma omp single
+{
+	printf("Level %d has num threads %d\n",
+	size, omp_get_num_threads());
+}
+}
 
 float* strassen_matrix_multiply_recursive(REAL_PTR A, REAL_PTR B, REAL_PTR out, int size){
     // allocate memory contain result
     //REAL_PTR ptr_C = ALLOC_MATRIX(size, float);
-
+    //printf("Called strassen: %d \n", size);
     if (size <= MIN_SQUARE_MATRIX) {
 
         int i, j, k;
@@ -235,7 +254,8 @@ float* strassen_matrix_multiply_recursive(REAL_PTR A, REAL_PTR B, REAL_PTR out, 
                 out[i * size + j] = sum;
             }
         }
-        //return;
+	//printf("Return null\n");
+        return NULL;
     } else {
         int i, j;
         REAL_PTR ptr_T = ALLOC_MATRIX(size, float);
@@ -338,16 +358,13 @@ float* strassen_matrix_multiply_recursive(REAL_PTR A, REAL_PTR B, REAL_PTR out, 
         CPY_32FMATRIX(_T[4], B22, half_size);
         _add(B11, B12, _T[5], half_size);
         _add(B21, B22, _T[6], half_size);
-
-//#pragma omp parallel for private(i) firstprivate(_S, _T, _M, half_size) schedule(static)
-
-            for(i = 0; i < 7; ++i) {
-#pragma omp task final(size < 256)
+	//report_num_threads(size);
+//#pragma omp parallel for private(i) firstprivate(_S, _T, _M, half_size) schedule(static) if(size >= 512) num_threads(7)
+	for(i = 0; i < 7; ++i) {
+#pragma omp task final(size < 512)
                   strassen_matrix_multiply_recursive(_S[i], _T[i], _M[i], half_size);
-            }
+        }
 #pragma omp taskwait
-
-//#pragma omp task
         _add(_M[0], _M[3], C11, half_size);
         _sub(C11, _M[4], C11, half_size);
         _add(C11, _M[6], C11, half_size);
@@ -709,8 +726,8 @@ int main(int argc, char *argv[])
     }
 
 #endif
-    float *matrix_A, *matrix_B, *matrix_C;
-    float *zm_a, *zm_b, *zm_c;
+    __declspec(target(mic)) float *matrix_A, *matrix_B, *matrix_C;
+    __declspec(target(mic)) float *zm_a, *zm_b, *zm_c;
     //posix_memalign((void**)&matrix_A, 64, sizeof(float) * size * size); // Lam mau khong loi ich gi
     //posix_memalign((void**)&matrix_B, 64, sizeof(float) * size * size); // Lam mau khong loi ich gi
     //posix_memalign((void**)&matrix_C, 64, sizeof(float) * size * size); // Lam mau khong loi ich gi
@@ -736,6 +753,7 @@ int main(int argc, char *argv[])
         }
     }
     int k;
+    if (MIN_SQUARE_MATRIX > size) MIN_SQUARE_MATRIX=size;
     REAL_PTR t = ALLOC_MATRIX(MIN_SQUARE_MATRIX * MIN_SQUARE_MATRIX, float);
     for(k = 0; k < (size / MIN_SQUARE_MATRIX) * (size / MIN_SQUARE_MATRIX); ++k){
         int num_of_el = MIN_SQUARE_MATRIX *MIN_SQUARE_MATRIX;
@@ -788,45 +806,68 @@ if (enable_serial == true){
     printf("Time elapsed in ms: %f\n", elapsed);
 }
 
-    start = omp_get_wtime();
     // Execuatable code
 // Check offload devices
     int num_devices = 0;
     printf("Checking for Intel(R) Xeon Phi(TM) (Target CPU) devices...\n\n");
 #ifdef __INTEL_OFFLOAD
-     num_devices = _Offload_number_of_devices();
-     printf("Number of devices: ", num_devices);
+    //num_devices = _Offload_number_of_devices();
+    // printf("Number of devices: ", num_devices);
 // Offload data here
-#pragma offload target(mic:0) \
-    in(zm_a : length(size * size), zm_b : length(size * size), size), \
+
+    start = omp_get_wtime();
+#pragma offload target(mic:1) \
+    in(zm_a : length(size * size)),\
+    in(zm_b : length(size * size)),\
+    in(size),\
     out(zm_c : length(size * size))
+{
 #endif
 #pragma omp parallel
 #pragma omp single nowait
-    strassen_matrix_multiply_recursive(zm_a, zm_b, zm_c, size);
+	  strassen_matrix_multiply_recursive(zm_a, zm_b, zm_c, size);
+
+//        simple_matrix_mul(matrix_A, matrix_B, matrix_C, size);
+}
 // End offload here
     stop = omp_get_wtime();
     elapsed = (double)(stop - start);
     strassen_time = elapsed;
     printf("Strassen algorithm. Time elapsed in ms: %f\n", elapsed);
-    write_file_zmorton(zm_c, size, "strassen.bin");
+    //write_file_zmorton(zm_c, size, "strassen.bin");
 
     show_matrix(matrix_A, size, false);
-    printf("\n");
-
-
 
     printf("\n");
-    show_matrix(zm_c, size, true);
+
+
+
+    printf("Matrix compare....\n");
+    show_matrix(matrix_A, size, false);
+    printf("...........\n");
+    show_matrix(zm_a, size, false);
+    printf("Result.........\n");
+    show_matrix(zm_c, size, false);
     printf("\n");
     start = omp_get_wtime();
         // Execuatable code
-        simple_matrix_mul(matrix_A, matrix_B, matrix_C, size);
+    #pragma offload target(mic:0) \
+	in(zm_a:length(size * size)), \
+	in(zm_b:length(size * size)), \
+	in(size),\
+	out(zm_c:length(size * size))
+{
+#pragma omp parallel
+#pragma omp single nowait
+	strassen_matrix_multiply_recursive(zm_a, zm_b, zm_c, size);
+}
+        //simple_matrix_mul(matrix_A, matrix_B, matrix_C, size);
     stop = omp_get_wtime();
+
     elapsed = (double)(stop - start) ;
     stupid_time = elapsed;
     show_matrix(matrix_C, size, false);
-    write_file(matrix_C, size, "naive.bin");
+    //write_file(matrix_C, size, "naive.bin");
 
     int m;
     i = 0; j = 0; // block (0,0)
